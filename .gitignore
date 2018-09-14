@@ -1,0 +1,17 @@
+*.class
+*.pyc
+*.iml
+*.ipr
+*.iws
+*.zip
+*.jar
+*.orig
+*.rej
+*~
+.classpath
+.project
+target
+Gemfile.lock
+spoon
+*.log
+.buildpath
