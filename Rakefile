@@ -17,7 +17,7 @@
 
 gem "buildr", "~>1.5.3"
 require "buildr"
-#require "buildr/jetty"
+require "buildr/jetty"
 
 require File.join(File.dirname(__FILE__), 'dependencies.rb')
 require File.join(File.dirname(__FILE__), 'repositories.rb')
@@ -25,13 +25,17 @@ require File.join(File.dirname(__FILE__), 'repositories.rb')
 desc "Dependency-Check"
 
 define "Dependency-Check" do
-  
-  Java.verbose
+
+
   project.version = '0.0.1'
   project.group = "org.example"
 
   project.owasp.enabled = "true" unless ENV["DEPENDENCY_CHECK"] =~ /^(no|off|false|skip)$/i
-  project.owasp.dependency_check_options = { :projectName=>"Test-Dependency-Check", :reportFormat=>"XML" }
+  project.owasp.dependency_check_options = { "--project" => project.name, 
+                                             "-f"=>"HTML",
+                                             "-o"=>project.path_to("target"),
+                                             "-d"=>"/tmp" }
+
 
   compile.options.source = "1.8"
   compile.options.target = "1.8"

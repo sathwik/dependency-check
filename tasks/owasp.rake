@@ -18,14 +18,20 @@
 module Buildr
   # OWASP Dependency Check Plugin. 
   # By default its off for the project, to enable the check add <CODE>project.owasp.dependency_check = true</CODE> to your build file.
-  # To pass additional owasp ant task options: 
-  # project.owasp.dependency_check_options = { :projectName=>"Test-Dependency-Check", :reportFormat=>"XML" }
+  # To pass additional owasp command options: 
+  # <CODE>
+  # project.owasp.dependency_check_options = { "--project" => project.name, 
+  #                                            "-f"=>"HTML",
+  #                                            "-o"=>project.path_to("target"),
+  #                                            "-d"=>"/tmp" }
+  # </CODE>
 
   module OWASP
 
-    VERSION = "3.3.1"
+    VERSION = "3.3.2"
+
     REQUIRES = Buildr.struct(
-                :owasp => Buildr.group("dependency-check-ant",
+                :owasp => Buildr.group("dependency-check-cli",
                             "dependency-check-core",
                             "dependency-check-utils",
                             :under=>"org.owasp",
@@ -37,68 +43,64 @@ module Buildr
                             "lucene-sandbox",
                             :under=>"org.apache.lucene",
                             :version=>"5.5.5"),
-                 :commons => ["org.apache.commons:commons-lang3:jar:3.7",
+                 :commons => ["org.apache.commons:commons-lang3:jar:3.8",
                             "org.apache.commons:commons-text:jar:1.3",
-                            "org.apache.commons:commons-compress:jar:1.17"],
-                 :misc => ["org.slf4j:slf4j-api:jar:1.7.12",
+                            "org.apache.commons:commons-compress:jar:1.18"],
+                 :misc => ["org.slf4j:slf4j-api:jar:1.7.25",
                           "org.apache.velocity:velocity:jar:1.7",
+                          "org.apache.ant:ant:jar:1.9.9",
                           "org.glassfish:javax.json:jar:1.0.4",
                           "org.json:json:jar:20140107",
                           "org.jsoup:jsoup:jar:1.11.3",
                           "commons-collections:commons-collections:jar:3.2.2",
                           "commons-io:commons-io:jar:2.6",
                           "commons-lang:commons-lang:jar:2.4",
+                          "commons-cli:commons-cli:jar:1.4",
                           "com.github.spullara.mustache.java:compiler:jar:0.8.17",
                           "com.google.code.gson:gson:jar:2.8.5",
                           "com.google.guava:guava:jar:16.0.1",
                           "com.h2database:h2:jar:1.4.196",
-                          "com.sun.mail:mailapi:jar:1.6.1",
+                          "com.sun.mail:mailapi:jar:1.6.2",
                           "com.esotericsoftware:minlog:jar:1.3",
                           "com.h3xstream.retirejs:retirejs-core:jar:3.0.1",
                           "com.vdurmont:semver4j:jar:2.2.0",
                           "javax.activation:activation:jar:1.1",
-                          "joda-time:joda-time:jar:1.5"]
+                          "joda-time:joda-time:jar:1.6",
+                          "ch.qos.logback:logback-core:jar:1.2.3",
+                          "ch.qos.logback:logback-classic:jar:1.2.3"]
                )
 
         class << self
 
-          def invoke_dependency_check(deps,options,classpath)
-            Buildr.ant('dependency_check') do |ant|
-              ant.taskdef :name => "dependency_check", :classname => "org.owasp.dependencycheck.taskdefs.Check", :classpath => classpath
+          def invoke_dependency_check(deps,options)
+            Buildr.artifacts(REQUIRES).each { |a| a.invoke() if a.respond_to?(:invoke) }
 
-              # check if project has compile.dependencies
-              if (deps.any?)
-                ant.dependency_check options do
-                  deps.each do |dep|
-                    depname = dep.to_s
-                    puts "checking jar:" + File.basename(depname)
-                    ant.filelist :dir=> File.dirname(depname), :files=> File.basename(depname)
-                  end
-                end
-              end
+            #OWASP CMD Line
+            all_args = []
+            Buildr.artifacts(deps).each { |a| a.invoke() if a.respond_to?(:invoke) }.map(&:to_s).each { |d| all_args << "-s"  << d }
 
-            end
+            all_args << options.to_a.flatten
+            Java::Commands.java "org.owasp.dependencycheck.App", *all_args, :classpath=>REQUIRES
           end
 
-          def get_project_dependencies(deps,proj)
+          def get_project_dependencies(proj)
+            deps = []
             if proj.compile.dependencies.any?
               Buildr.artifacts(proj.compile.dependencies).each { |a| a.invoke() if a.respond_to?(:invoke) }.flatten.each { |b| deps << b if !deps.include? b }
             end
+            deps
           end
 
           def dependency_check_project(proj, options)
             deps = []
 
             #get current project dependencies
-            get_project_dependencies(deps, proj)
+            deps << get_project_dependencies(proj)
 
             #get sub projects dependencies
-            proj.projects.each { |p| get_project_dependencies(deps, p) } if proj.projects.any?
+            proj.projects.each { |p| deps << get_project_dependencies(p) } if proj.projects.any?
 
-            cp = Buildr.artifacts(REQUIRES).each { |a| a.invoke() if a.respond_to?(:invoke) }.map(&:to_s).join(File::PATH_SEPARATOR)
-
-            puts "Dependency check for project started: " + proj.name
-            invoke_dependency_check(deps,options,cp)
+            invoke_dependency_check(deps,options)
           end
 
         end
@@ -133,8 +135,8 @@ module Buildr
 
           after_define do |project|
             if project.owasp.enabled?
-              puts "OWASP Dependency task is enabled"
               project.task('dependency_check') do
+                puts "Dependency check started " + project.name
                 Buildr::OWASP.dependency_check_project(project, project.owasp.dependency_check_options)
               end
             end
